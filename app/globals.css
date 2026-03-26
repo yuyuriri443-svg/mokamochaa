@@ -43,3 +43,61 @@ img {
   max-width: 100%;
   height: auto;
 }
+/* --- TỐI ƯU RESPONSIVE TOÀN WEB --- */
+
+/* 1. Chống tràn ngang tuyệt đối */
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+*, *:before, *:after {
+  box-sizing: inherit;
+}
+
+/* 2. Grid truyện tự động: Mobile 2 cột, PC nhiều cột */
+.book-grid-responsive {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+  gap: 15px !important;
+  width: 100% !important;
+}
+
+/* 3. Media Query cho Điện thoại (Dưới 768px) */
+@media (max-width: 768px) {
+  /* Thu nhỏ lề của nội dung chính */
+  main {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    padding-top: 70px !important; /* Đẩy nội dung xuống dưới Navbar */
+  }
+
+  /* Navbar: Cho logo nhỏ lại và hẹp lề */
+  nav {
+    padding: 10px 15px !important;
+  }
+
+  /* Thanh tìm kiếm: Chiếm rộng hơn trên mobile để dễ gõ */
+  nav > div[style*="width: 35%"], 
+  nav > div[style*="width: 35%"] { 
+    width: 50% !important; 
+  }
+
+  /* Card truyện: Thu nhỏ để không chiếm quá nhiều chỗ */
+  .book-card-3d {
+    padding: 8px !important;
+    border-radius: 12px !important;
+  }
+
+  .book-card-3d img {
+    height: 180px !important; /* Ảnh lùn lại tí cho xinh */
+  }
+
+  /* Tiêu đề trang (H1) */
+  h1 {
+    font-size: 1.1rem !important;
+  }
+}

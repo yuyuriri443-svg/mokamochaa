@@ -186,7 +186,7 @@ function MoreContent() {
   </header>
 
         {/* Grid Truyện 3D */}
-        <div style={gridStyle}>
+        <div style={gridStyle} className="book-grid-responsive">
           {currentBooks.map((book) => (
             <Link href={`/book/${book.id}`} key={book.id} style={{ textDecoration: 'none' }}>
               <div className="book-card-3d" style={cardStyle}>
