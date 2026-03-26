@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Phong cách Vintage cho toàn bộ trang web */
+body {
+  color: #4A3F35;
+  background-color: #F5EFE6;
+  margin: 0;
+  padding: 0;
+  font-family: 'Playfair Display', serif; /* Font chữ cổ điển */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar Vintage xịn xò */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #F5EFE6;
+}
+::-webkit-scrollbar-thumb {
+  background: #B08968;
+  border-radius: 10px;
+  border: 2px solid #F5EFE6;
+}
+
+/* Hiệu ứng mượt mà khi di chuột */
+* {
+  transition: all 0.3s ease;
+}
+
+/* Chống vỡ layout cho ảnh */
+img {
+  max-width: 100%;
+  height: auto;
+}
