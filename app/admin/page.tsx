@@ -79,12 +79,26 @@ function ManageBooks() {
     fetchBooks();
   };
 
-  const deleteBook = async (id: string) => {
-    if (confirm("Xóa truyện sẽ xóa luôn các chương liên quan. Bạn chắc chứ?")) {
-      await supabase.from('books').delete().eq('id', id);
-      fetchBooks();
-    }
-  };
+  const handleDeleteBook = async (bookId: string) => {
+  const confirmDelete = confirm("Bạn có chắc muốn xóa cuốn truyện 'chill' này không? ☕");
+  if (!confirmDelete) return;
+
+  try {
+    const { error } = await supabase
+      .from('books')
+      .delete()
+      .eq('id', bookId);
+
+    if (error) throw error;
+
+    alert("Đã xóa truyện thành công! ✨");
+    // Reload lại trang hoặc cập nhật state để truyện biến mất
+    window.location.reload(); 
+    
+  } catch (error: any) {
+    alert("Lỗi xóa truyện: " + error.message);
+  }
+};
 
   return (
     <div>
