@@ -17,7 +17,7 @@ const COFFEE = {
   gradient: 'linear-gradient(135deg, #3E2723 0%, #8D6E63 100%)'
 }
 
-exportdefault function ProfilePage() {
+export default function ProfilePage() {
   const [currentUser, setCurrentUser] = useState<any>(null) // Người đang đăng nhập
   const [profileUser, setProfileUser] = useState<any>(null) // Thông tin profile đang hiển thị
   const [uploading, setUploading] = useState(false)
