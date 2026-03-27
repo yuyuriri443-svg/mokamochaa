@@ -1,27 +1,27 @@
-import './globals.css';
-import React from 'react';
-
-export const viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-};
+import Navbar from '../components/Navbar'; // Nếu file Navbar nằm trong thư mục components
+// import Navbar from './components/Navbar'; // Thử dòng này nếu dòng trên lỗi
 
 export const metadata = {
-  title: 'MokaMocha Chat',
-  description: 'Ứng dụng chat của tôi',
-};
+  title: 'MOKAMOCHA - Đọc truyện cùng cà phê',
+  description: 'Nền tảng đọc truyện và kết nối bạn bè',
+}
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="vi">
-      <body className="antialiased overflow-x-hidden min-h-screen bg-[#FFF9F5]">
-        <main className="w-full max-w-full overflow-hidden">
+      <body style={{ margin: 0, fontFamily: 'sans-serif' }}>
+        {/* Navbar sẽ hiện ở mọi trang */}
+        <Navbar />
+        
+        {/* Nội dung của từng trang (Home, Book, Profile...) sẽ hiện ở đây */}
+        <main>
           {children}
         </main>
       </body>
     </html>
   );
-  
 }
