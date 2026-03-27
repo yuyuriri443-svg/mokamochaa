@@ -17,7 +17,7 @@ const COFFEE = {
   gradient: 'linear-gradient(135deg, #3E2723 0%, #8D6E63 100%)'
 }
 
-export default function ProfilePage() {
+exportdefault function ProfilePage() {
   const [currentUser, setCurrentUser] = useState<any>(null) // Người đang đăng nhập
   const [profileUser, setProfileUser] = useState<any>(null) // Thông tin profile đang hiển thị
   const [uploading, setUploading] = useState(false)
@@ -28,8 +28,18 @@ export default function ProfilePage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setCurrentUser(user)
-        setProfileUser(user) // Mặc định hiện profile của chính mình
-        setAvatarUrl(user.user_metadata?.avatar_url || null)
+        setProfileUser(user)
+        
+        // Lấy avatar từ bảng profiles thay vì metadata
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('avatar_url')
+          .eq('id', user.id)
+          .maybeSingle()
+          
+        if (profileData?.avatar_url) {
+          setAvatarUrl(profileData.avatar_url)
+        }
       }
     }
     getInitialData()
@@ -61,19 +71,36 @@ export default function ProfilePage() {
       if (!file) return
       
       const fileExt = file.name.split('.').pop()
-      const filePath = `${currentUser.id}-${Math.random()}.${fileExt}`
+      // Tạo tên file duy nhất để tránh bị cache trình duyệt
+      const fileName = `${currentUser.id}-${Math.random()}.${fileExt}`
+      const filePath = `${fileName}`
 
+      // 1. Upload lên Storage
       let { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file)
       if (uploadError) throw uploadError
 
+      // 2. Lấy URL công khai
       const { data } = supabase.storage.from('avatars').getPublicUrl(filePath)
       const publicUrl = data.publicUrl
 
-      await supabase.auth.updateUser({ data: { avatar_url: publicUrl } })
+      // 3. CẬP NHẬT VÀO BẢNG PROFILES (Để Navbar lấy được)
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl } as any)
+        .eq('id', currentUser.id)
+
+      if (updateError) throw updateError
+
+      // 4. Cập nhật State tại chỗ
       setAvatarUrl(publicUrl)
+
+      // 5. PHÁT TÍN HIỆU CHO NAVBAR (Đồng bộ tức thì)
+      window.dispatchEvent(new Event('storage'))
+      
       alert('Cập nhật ảnh đại diện thành công! ✨')
     } catch (error: any) {
-      alert(error.message)
+      console.error("Lỗi upload:", error.message)
+      alert("Lỗi: " + error.message)
     } finally {
       setUploading(false)
     }
