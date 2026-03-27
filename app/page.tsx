@@ -82,8 +82,8 @@ export default function HomePage() {
           
           {filter === 'Tất cả' && (
             <>
-              <BookBlock title="🌈 XU HƯỚNG ĐAM MỸ" items={books.filter(b => b.category === 'Đam mỹ').slice(0, 5)} />
-              <BookBlock title="🧸 TRUYỆN MỚI NHẤT" items={books.slice(-5).reverse()} />
+              <BookBlock title="ĐAM MỸ" items={books.filter(b => b.category === 'Đam mỹ').slice(0, 5)} />
+              <BookBlock title="HOÀN THÀNH" items={books.slice(-5).reverse()} />
             </>
           )}
         </div>
@@ -149,6 +149,7 @@ function BookBlock({ title, items }: { title: string, items: any[] }) {
 }
 
 // --- STYLES ---
+
 const pageWrapper: React.CSSProperties = { 
   minHeight: '100vh', 
   backgroundColor: '#FDF5E6',
@@ -164,26 +165,63 @@ const bgOverlayStyle: React.CSSProperties = {
 };
 
 const filterContainer = { 
-  background: '#fff', padding: '15px 8%', position: 'sticky' as any, 
-  top: 0, zIndex: 100, borderBottom: `1px solid ${COFFEE.border}` 
+  background: '#fff', 
+  padding: '15px', // Sửa từ 8% thành 15px
+  position: 'sticky' as any, 
+  top: 0, 
+  zIndex: 100, 
+  borderBottom: `1px solid ${COFFEE.border}`,
+  boxSizing: 'border-box'
 };
 const filterWrap = { display: 'flex', gap: '15px', maxWidth: '1300px', margin: '0 auto', flexWrap: 'wrap' as any };
 const filterNormal = { fontSize: '0.85rem', fontWeight: '600', color: COFFEE.light };
 const filterActive = { fontSize: '0.85rem', fontWeight: '700', color: COFFEE.deep, background: '#F0EBE3' };
 
-const container: React.CSSProperties = { display: 'flex', padding: '40px 8%', gap: '30px', maxWidth: '1400px', margin: '0 auto', position: 'relative', zIndex: 1 };
-const leftColumn = { flex: 3 };
-const sidebarStyle = { flex: 1, minWidth: '280px' };
-
+const container: React.CSSProperties = { 
+  display: 'flex', 
+  flexDirection: 'row',
+  flexWrap: 'wrap', // THÊM CÁI NÀY: Để Sidebar tự nhảy xuống dưới khi hết chỗ
+  padding: '20px 15px', // Sửa từ 8% thành 15px
+  gap: '20px', 
+  maxWidth: '1400px', 
+  margin: '0 auto', 
+  position: 'relative', 
+  zIndex: 1,
+  boxSizing: 'border-box'
+};
+const sidebarStyle: React.CSSProperties = { 
+  flex: '1', 
+  minWidth: '280px', // Đủ rộng để hiện BXH
+  width: '100%',
+  marginTop: '20px' 
+};
 const blockArea: React.CSSProperties = { 
-  background: '#FFF', padding: '25px', borderRadius: '30px', 
-  marginBottom: '35px', border: `1px solid ${COFFEE.border}`, boxShadow: '0 5px 15px rgba(0,0,0,0.02)' 
+  background: '#FFF', 
+  padding: '15px', // Giảm từ 25px xuống 15px
+  borderRadius: '20px', 
+  marginBottom: '25px', 
+  border: `1px solid ${COFFEE.border}`, 
+  boxShadow: '0 5px 15px rgba(0,0,0,0.02)',
+  boxSizing: 'border-box'
+};
+// Dòng 135 nè bạn:
+const leftColumn: React.CSSProperties = { 
+  flex: '3', 
+  minWidth: '320px', // Đảm bảo không bị quá hẹp trên điện thoại
+  width: '100%',
+  boxSizing: 'border-box'
 };
 const blockHead = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' };
 const blockTitle = { fontSize: '1rem', fontWeight: '700', color: COFFEE.deep, margin: 0 };
 const viewMore = { fontSize: '0.75rem', fontWeight: '600', color: COFFEE.medium, textDecoration: 'none' };
 
-const bookGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '20px' };
+const bookGrid = {
+  display: 'grid',
+  // Tự động tính toán số cột dựa trên chiều rộng màn hình
+  gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', 
+  gap: '15px',
+  width: '100%',
+};
 const cardStyle: React.CSSProperties = { background: '#fff', borderRadius: '20px', overflow: 'hidden', border: `1px solid #F0F0F0`, textAlign: 'center' };
 const coverWrap = { width: '100%', height: '200px', overflow: 'hidden' };
 const coverImg = { width: '100%', height: '100%', objectFit: 'cover' as any };
@@ -196,7 +234,19 @@ const readBtn = { width: '100%', padding: '8px 0', borderRadius: '12px', fontWei
 const rankWrapper = { background: '#fff', borderRadius: '25px', border: `1px solid ${COFFEE.border}`, overflow: 'hidden', position: 'sticky' as any, top: '90px' };
 const rankHeader = { background: COFFEE.deep, color: '#fff', padding: '15px', textAlign: 'center' as any, fontWeight: '700', fontSize: '0.85rem' };
 const rankItem = { display: 'flex', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #F5F5F5', textDecoration: 'none', color: COFFEE.deep };
-const rankNum = (i: number): React.CSSProperties => ({ minWidth: '24px', height: '24px', borderRadius: '50%', background: i < 3 ? COFFEE.medium : '#F0EBE3', color: i < 3 ? '#fff' : '#888', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: '700' });
+// Chèn cái này vào chỗ các biến const style ở cuối file nhé
+const rankNum = (i: number): React.CSSProperties => ({ 
+  minWidth: '24px', 
+  height: '24px', 
+  borderRadius: '50%', 
+  background: i < 3 ? COFFEE.medium : '#F0EBE3', 
+  color: i < 3 ? '#fff' : '#888', 
+  display: 'flex', 
+  alignItems: 'center', 
+  justifyContent: 'center', 
+  fontSize: '0.7rem', 
+  fontWeight: '700' 
+});
 const rankTitle = { fontSize: '0.8rem', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } as any;
 const rankMeta = { fontSize: '0.65rem', color: COFFEE.light };
 

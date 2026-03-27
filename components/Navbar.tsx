@@ -21,6 +21,7 @@ export default function Navbar() {
   const router = useRouter();
 
   useEffect(() => {
+    
     // 1. Lấy User & Lắng nghe Auth
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -41,6 +42,7 @@ export default function Navbar() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+  
 
   // 3. Logic Tìm kiếm (Sách và Người dùng)
   useEffect(() => {
@@ -49,6 +51,7 @@ export default function Navbar() {
         setSuggestions([]);
         return;
       }
+      
       
       // Tìm sách
       const { data: books } = await supabase.from('books').select('id, title, cover_url').ilike('title', `%${searchTerm}%`).limit(3);

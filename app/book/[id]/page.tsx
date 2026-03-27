@@ -231,16 +231,59 @@ export default function BookDetailPage() {
           </div>
 
           <div style={{ marginTop: '30px' }}>
-            {comments.map((c) => (
-              <div key={c.id} style={commentCard}>
-                <img src={c.avatar_url || `https://ui-avatars.com/api/?name=${c.user_email}&background=random`} style={avatarStyle} />
-                <div style={{ flex: 1 }}>
-                  <div style={comName}>{c.user_email?.split('@')[0]}</div>
-                  <p style={comContent}>{c.content}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+  {comments.map((c: any) => (
+    <div key={c.id} style={{ ...commentCard, display: 'flex', alignItems: 'start', gap: '12px', marginBottom: '15px' }}>
+      
+      {/* 1. CLICK VÀO AVATAR ĐỂ SANG PROFILE */}
+      <Link href={`/profile/${c.user_id}`} style={{ textDecoration: 'none' }}>
+        <img 
+          src={c.avatar_url || `https://ui-avatars.com/api/?name=${c.user_email}&background=random`} 
+          style={{ ...avatarStyle, cursor: 'pointer', flexShrink: 0 }} 
+          alt="avatar"
+        />
+      </Link>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          
+          {/* 2. CLICK VÀO TÊN ĐỂ SANG PROFILE */}
+          <Link href={`/profile/${c.user_id}`} style={{ textDecoration: 'none' }}>
+            <div style={{ ...comName, cursor: 'pointer', color: COFFEE.deep, fontSize: '0.85rem' }}>
+              {c.user_email?.split('@')[0]}
+            </div>
+          </Link>
+
+          {/* 3. NÚT XÓA (Chỉ hiện nếu mình là chủ comment) */}
+          {user && user.id === c.user_id && (
+            <button 
+              onClick={() => handleDeleteComment(c.id)}
+              style={{ 
+                background: 'none', 
+                border: 'none', 
+                color: '#ff4d4f', 
+                cursor: 'pointer', 
+                fontSize: '0.75rem',
+                opacity: 0.7
+              }}
+            >
+              🗑️ Xóa
+            </button>
+          )}
+        </div>
+
+        {/* Nội dung bình luận - Chống bể chữ dài */}
+        <p style={{ 
+          ...comContent, 
+          wordBreak: 'break-word', 
+          margin: '5px 0 0 0',
+          fontSize: '0.9rem' 
+        }}>
+          {c.content}
+        </p>
+      </div>
+    </div>
+  ))}
+</div>
         </div>
       </div>
     </div>
