@@ -1,11 +1,11 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient'; 
 import ManageBooks from './components/ManageBooks';
 import ManageChapters from './components/ManageChapters';
 import ManageNoti from './components/ManageNoti';
 
-// 1. Định nghĩa bảng màu
+// 1. Định nghĩa bảng màu (Palette)
 const COFFEE = { 
   deep: '#3E2723', 
   medium: '#5D4037', 
@@ -22,7 +22,7 @@ export default function AdminDashboard() {
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
   }, []);
 
-  // --- HÀM STYLE (ĐÃ FIX LỖI ĐỎ) ---
+  // 2. Hàm định nghĩa Style cho Nút Tab (Fix lỗi đỏ ở Sidebar)
   const tabBtn = (active: boolean): React.CSSProperties => ({
     padding: '12px 20px',
     borderRadius: '12px',
@@ -38,7 +38,7 @@ export default function AdminDashboard() {
     marginBottom: '5px'
   });
 
-  // --- CÁC STYLE KHÁC ---
+  // 3. Object Styles tổng hợp (Ép kiểu chuẩn React)
   const styles = {
     adminLayout: { display: 'flex', minHeight: '100vh', background: COFFEE.bg } as React.CSSProperties,
     sidebarStyle: { width: '260px', background: COFFEE.deep, padding: '30px 20px', display: 'flex', flexDirection: 'column', position: 'fixed', height: '100vh' } as React.CSSProperties,
@@ -51,12 +51,14 @@ export default function AdminDashboard() {
     rowItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', borderBottom: '1px solid #eee', fontSize: '0.9rem' } as React.CSSProperties,
   };
 
+  // Kiểm tra quyền Admin
   if (user && user.email !== 'yuyuriri443@gmail.com') {
-    return <div style={{padding: '50px', textAlign: 'center'}}>☕ Xin lỗi, khu vực này chỉ dành cho chủ quán!</div>;
+    return <div style={{padding: '50px', textAlign: 'center'}}>☕ Khu vực nội bộ, vui lòng quay lại!</div>;
   }
 
   return (
     <div style={styles.adminLayout}>
+      {/* SIDEBAR DỌC */}
       <div style={styles.sidebarStyle}>
         <div style={styles.logoAdmin}>MOKA ADMIN ☕</div>
         
@@ -72,11 +74,14 @@ export default function AdminDashboard() {
         </button>
       </div>
 
+      {/* VÙNG HIỂN THỊ NỘI DUNG */}
       <div style={styles.mainContent}>
         {tab === 'books' && <ManageBooks styles={styles} COFFEE={COFFEE} />}
         {tab === 'chapters' && <ManageChapters styles={styles} />}
-        {tab === 'noti' && <ManageNoti styles={styles} />}
+        {tab === 'noti' && <ManageNotis styles={styles} />}
       </div>
     </div>
   );
 }
+
+// Lưu ý: Đảm bảo component Noti bạn đặt tên đúng là ManageNotis hoặc ManageNoti cho khớp dòng trên nhé!
