@@ -25,7 +25,7 @@ export default function BookDetailPage() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
-  // 1. Kiểm tra trạng thái thư viện
+  // 1. Kiểm tra trạng thái thư viện & User
   useEffect(() => {
     async function checkStatus() {
       const { data: { user } } = await supabase.auth.getUser();
@@ -42,74 +42,29 @@ export default function BookDetailPage() {
     }
     checkStatus();
   }, [id]);
-  // --- HÀM XÓA BÌNH LUẬN ---
-  const handleDeleteComment = async (commentId: string) => {
-    if (!confirm("Cậu có chắc muốn xóa bình luận này không? ☕")) return;
 
-    const { error } = await supabase
-      .from('comments')
-      .delete()
-      .eq('id', commentId)
-      .eq('user_id', user.id); // Chỉ chủ cmt mới xóa được
-
-    if (!error) {
-      setComments(comments.filter(c => c.id !== commentId));
-      alert("Đã xóa bình luận! 🗑️");
-    } else {
-      alert("Lỗi khi xóa: " + error.message);
-    }
-  };
-
-  // --- HÀM LIKE BÌNH LUẬN (DEMO) ---
-  const handleLikeComment = (commentId: string) => {
-    alert("Cảm ơn cậu đã thả tim! ❤️ (Tính năng này đang được kết nối Database)");
-    // Sau này em tạo bảng 'likes' rồi insert vào tương tự như 'library' nhé
-  };
-
-  // --- HÀM NHẮN TIN (CHUYỂN TRANG) ---
-  const handleGoToChat = (targetUserId: string) => {
-    if (!user) return alert("Đăng nhập để nhắn tin nhé!");
-    if (user.id === targetUserId) return alert("Cậu không thể tự nhắn tin cho chính mình đâu nè!");
-    router.push(`/chat?to=${targetUserId}`);
-  };
-
-  // 2. Logic Thêm/Xóa thư viện
-  const handleToggleLibrary = async (isPublic: boolean) => {
-    if (!user) return alert("Đăng nhập để thực hiện nhé! ☕");
-
-    if (isSaved) {
-      const { error } = await supabase
-        .from('library')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('book_id', id);
-
-      if (!error) {
-        alert("Đã xóa khỏi thư viện! 🗑️");
-        setIsSaved(false);
-      }
-    } else {
-      const { error } = await supabase
-        .from('library')
-        .upsert([{ user_id: user.id, book_id: id, is_public: isPublic }]);
-
-      if (!error) {
-        alert(isPublic ? "Đã thêm vào thư viện công khai! ✨" : "Đã lưu riêng tư! 🔒");
-        setIsSaved(true);
-      }
-    }
-  };
-
-  // 3. Lấy dữ liệu truyện
+  // 2. Lấy dữ liệu truyện (Fix cột chapter)
   useEffect(() => {
     async function fetchData() {
       if (!id) return;
-      const { data: bData } = await (supabase.from('books').select('*').eq('id', id).single() as any);
+      // Lấy thông tin sách
+      const { data: bData } = await supabase.from('books').select('*').eq('id', id).single();
       if (bData) {
         setBook(bData);
-        const { data: cData } = await (supabase.from('chapters').select('*').eq('book_id', id).order('chapter_number') as any);
+        // Lấy danh sách chương - Ưu tiên cột 'chapter'
+        const { data: cData } = await supabase
+          .from('chapters')
+          .select('*')
+          .eq('book_id', id)
+          .order('chapter', { ascending: true });
         setChapters(cData || []);
-        const { data: comData } = await (supabase.from('comments').select('*').eq('book_id', id).order('created_at', { ascending: false }) as any);
+        
+        // Lấy bình luận
+        const { data: comData } = await supabase
+          .from('comments')
+          .select('*')
+          .eq('book_id', id)
+          .order('created_at', { ascending: false });
         setComments(comData || []);
       }
       setLoading(false);
@@ -117,10 +72,31 @@ export default function BookDetailPage() {
     fetchData();
   }, [id]);
 
+  // --- HÀM ĐỌC NGAY (Fix lỗi 404) ---
+  const startReading = async () => {
+    if (chapters.length > 0) {
+      // Dẫn đến ID của chương đầu tiên trong danh sách đã fetch
+      router.push(`/reading/${chapters[0].id}`);
+    } else {
+      alert("Truyện này chưa có chương nào bạn ơi! ☕");
+    }
+  };
+
+  const handleToggleLibrary = async (isPublic: boolean) => {
+    if (!user) return alert("Đăng nhập để thực hiện nhé! ☕");
+    if (isSaved) {
+      const { error } = await supabase.from('library').delete().eq('user_id', user.id).eq('book_id', id);
+      if (!error) { alert("Đã xóa khỏi thư viện! 🗑️"); setIsSaved(false); }
+    } else {
+      const { error } = await supabase.from('library').upsert([{ user_id: user.id, book_id: id, is_public: isPublic }]);
+      if (!error) { alert(isPublic ? "Đã thêm vào thư viện công khai! ✨" : "Đã lưu riêng tư! 🔒"); setIsSaved(true); }
+    }
+  };
+
   const handleSendComment = async () => {
     if (!user) return alert("Bạn cần đăng nhập!");
     if (!newComment.trim()) return;
-    const { data, error } = await (supabase.from('comments') as any).insert([
+    const { data, error } = await supabase.from('comments').insert([
       { book_id: id, user_id: user.id, user_email: user.email, content: newComment, rating: 5 }
     ]).select();
     if (!error && data) {
@@ -129,13 +105,21 @@ export default function BookDetailPage() {
     }
   };
 
-  const handleDownload = () => {
-    if (book?.file_url) window.open(book.file_url, '_blank');
-    else alert("Bản tải về đang được cập nhật!");
+  const handleDeleteComment = async (commentId: string) => {
+    if (!confirm("Xóa bình luận này? ☕")) return;
+    const { error } = await supabase.from('comments').delete().eq('id', commentId).eq('user_id', user.id);
+    if (!error) {
+      setComments(comments.filter(c => c.id !== commentId));
+    }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: '100px' }}>☕ Đang pha cà phê...</div>;
-  if (!book) return <div style={{ textAlign: 'center', padding: '100px' }}>Không tìm thấy truyện.</div>;
+  const handleDownload = () => {
+    if (book?.file_url) window.open(book.file_url, '_blank');
+    else alert("Bản tải về chưa sẵn sàng!");
+  };
+
+  if (loading) return <div style={centerStyle}>☕ Đang pha cà phê...</div>;
+  if (!book) return <div style={centerStyle}>Không tìm thấy truyện.</div>;
 
   return (
     <div style={pageWrapper}>
@@ -153,29 +137,16 @@ export default function BookDetailPage() {
           <div style={headerGrid}>
             <div style={{ textAlign: 'center' }}>
                 <img src={book.cover_url} style={bigCoverStyle} alt={book.title} />
-                
                 <div style={btnGroup}>
-                  <button onClick={() => router.push(`/book/${id}/chapter/1`)} className="btn-hover" style={readBtn}>ĐỌC NGAY</button>
+                  <button onClick={startReading} className="btn-hover" style={readBtn}>ĐỌC NGAY</button>
                   <button onClick={handleDownload} className="btn-hover" style={downloadBtn}>TẢI XUỐNG</button>
                 </div>
-
                 <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-                  <button 
-                    onClick={() => handleToggleLibrary(true)} 
-                    style={isSaved ? removeBtnStyle : libBtnStyle} 
-                    className="btn-hover"
-                  >
+                  <button onClick={() => handleToggleLibrary(true)} style={isSaved ? removeBtnStyle : libBtnStyle} className="btn-hover">
                     {isSaved ? "🗑️ Bỏ lưu" : "+ Thư viện"}
                   </button>
-                  
                   {!isSaved && (
-                    <button 
-                      onClick={() => handleToggleLibrary(false)} 
-                      style={privateBtnStyle} 
-                      className="btn-hover"
-                    >
-                      🔒 Lưu kín
-                    </button>
+                    <button onClick={() => handleToggleLibrary(false)} style={privateBtnStyle} className="btn-hover">🔒 Lưu kín</button>
                   )}
                 </div>
             </div>
@@ -185,13 +156,13 @@ export default function BookDetailPage() {
               <p style={authorStyle}>Tác giả: <span style={{color: COFFEE.deep, fontWeight: '700'}}>{book.author}</span></p>
               
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '15px' }}>
-                <div style={tagLabel}>Thể loại: {book.category || 'Linh dị'}</div>
+                <div style={tagLabel}>{book.category || 'Linh dị'}</div>
                 <div style={statusBadge}>{book.status || 'Đang cập nhật'}</div>
               </div>
               
               <div style={reviewBox}>
                 <div style={isExpanded ? { whiteSpace: 'pre-line' } : { ...lineClamp, whiteSpace: 'pre-line' }}>
-                  {book.description || "Tác phẩm chưa có tóm tắt nội dung."}
+                  {book.description || "Tác phẩm chưa có tóm tắt."}
                 </div>
                 <span onClick={() => setIsExpanded(!isExpanded)} style={toggleReview}>
                   {isExpanded ? "Thu gọn ▲" : "Xem nội dung đầy đủ ▼"}
@@ -207,90 +178,52 @@ export default function BookDetailPage() {
           </div>
         </div>
 
+        {/* MỤC LỤC */}
         <div style={sectionBox}>
           <h3 style={sectionTitle}>📜 MỤC LỤC</h3>
           <div style={chapterGrid}>
-            {chapters.map((chap) => (
-              <Link key={chap.id} href={`/book/${id}/chapter/${chap.chapter_number}`} style={chapterLink}>
-                Chương {chap.chapter_number}: {chap.title}
+            {chapters.length > 0 ? chapters.map((chap) => (
+              <Link key={chap.id} href={`/reading/${chap.id}`} style={chapterLink}>
+                Chương {chap.chapter}: {chap.title}
               </Link>
-            ))}
+            )) : <p style={{fontSize:'0.8rem', color:'#999'}}>Đang cập nhật mục lục...</p>}
           </div>
         </div>
 
+        {/* THẢO LUẬN */}
         <div style={sectionBox}>
           <h3 style={sectionTitle}>💬 THẢO LUẬN ({comments.length})</h3>
-          <textarea 
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Nhập cảm nhận của bạn..."
-            style={dashTextarea}
-          />
+          <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Nhập cảm nhận của bạn..." style={dashTextarea} />
           <div style={{ textAlign: 'right', marginTop: '10px' }}>
             <button onClick={handleSendComment} className="btn-hover" style={sendBtn}>Gửi bình luận</button>
           </div>
 
           <div style={{ marginTop: '30px' }}>
-  {comments.map((c: any) => (
-    <div key={c.id} style={{ ...commentCard, display: 'flex', alignItems: 'start', gap: '12px', marginBottom: '15px' }}>
-      
-      {/* 1. CLICK VÀO AVATAR ĐỂ SANG PROFILE */}
-      <Link href={`/profile/${c.user_id}`} style={{ textDecoration: 'none' }}>
-        <img 
-          src={c.avatar_url || `https://ui-avatars.com/api/?name=${c.user_email}&background=random`} 
-          style={{ ...avatarStyle, cursor: 'pointer', flexShrink: 0 }} 
-          alt="avatar"
-        />
-      </Link>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          
-          {/* 2. CLICK VÀO TÊN ĐỂ SANG PROFILE */}
-          <Link href={`/profile/${c.user_id}`} style={{ textDecoration: 'none' }}>
-            <div style={{ ...comName, cursor: 'pointer', color: COFFEE.deep, fontSize: '0.85rem' }}>
-              {c.user_email?.split('@')[0]}
-            </div>
-          </Link>
-
-          {/* 3. NÚT XÓA (Chỉ hiện nếu mình là chủ comment) */}
-          {user && user.id === c.user_id && (
-            <button 
-              onClick={() => handleDeleteComment(c.id)}
-              style={{ 
-                background: 'none', 
-                border: 'none', 
-                color: '#ff4d4f', 
-                cursor: 'pointer', 
-                fontSize: '0.75rem',
-                opacity: 0.7
-              }}
-            >
-              🗑️ Xóa
-            </button>
-          )}
-        </div>
-
-        {/* Nội dung bình luận - Chống bể chữ dài */}
-        <p style={{ 
-          ...comContent, 
-          wordBreak: 'break-word', 
-          margin: '5px 0 0 0',
-          fontSize: '0.9rem' 
-        }}>
-          {c.content}
-        </p>
-      </div>
-    </div>
-  ))}
-</div>
+            {comments.map((c: any) => (
+              <div key={c.id} style={commentCard}>
+                <Link href={`/profile/${c.user_id}`}>
+                  <img src={c.avatar_url || `https://ui-avatars.com/api/?name=${c.user_email}&background=random`} style={avatarStyle} alt="avatar" />
+                </Link>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <div style={comName}>{c.user_email?.split('@')[0]}</div>
+                    {user?.id === c.user_id && (
+                      <button onClick={() => handleDeleteComment(c.id)} style={deleteBtn}>🗑️</button>
+                    )}
+                  </div>
+                  <p style={comContent}>{c.content}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// --- STYLES ---
+// --- CSS STYLES ---
+const centerStyle: React.CSSProperties = { textAlign: 'center', padding: '100px' };
 const pageWrapper: React.CSSProperties = { minHeight: '100vh', backgroundColor: COFFEE.bg, position: 'relative' };
 const bgOverlayStyle: React.CSSProperties = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundImage: `url('/bg-coffee.png')`, backgroundSize: '400px', opacity: 0.2, zIndex: 0, pointerEvents: 'none' };
 const container: React.CSSProperties = { maxWidth: '1000px', margin: '0 auto', padding: '40px 20px', position: 'relative', zIndex: 1 };
@@ -318,7 +251,7 @@ const commentCard = { display: 'flex', gap: '15px', marginBottom: '20px', paddin
 const avatarStyle: any = { width: '45px', height: '45px', borderRadius: '50%', objectFit: 'cover' };
 const comName = { fontWeight: '700', color: COFFEE.deep, fontSize: '0.9rem' };
 const comContent = { fontSize: '0.85rem', color: '#444', marginTop: '5px' };
-
+const deleteBtn = { background: 'none', border: 'none', color: '#ff4d4f', cursor: 'pointer', fontSize: '0.75rem' };
 const libBtnStyle: React.CSSProperties = { flex: 1, padding: '10px', borderRadius: '15px', border: `2px solid ${COFFEE.deep}`, background: '#fff', color: COFFEE.deep, fontWeight: '800', fontSize: '0.75rem', cursor: 'pointer' };
 const privateBtnStyle: React.CSSProperties = { flex: 1, padding: '10px', borderRadius: '15px', border: 'none', background: '#ECE0D1', color: COFFEE.medium, fontWeight: '800', fontSize: '0.75rem', cursor: 'pointer' };
 const removeBtnStyle: React.CSSProperties = { flex: 1, padding: '10px', borderRadius: '15px', border: `2px solid #ff4d4d`, background: '#fff', color: '#ff4d4d', fontWeight: '800', fontSize: '0.75rem', cursor: 'pointer' };

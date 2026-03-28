@@ -2,117 +2,67 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
-interface Props {
-  styles: {
-    cardStyle: React.CSSProperties;
-    inputStyle: React.CSSProperties;
-    btnPrimary: React.CSSProperties;
-    btnMini: React.CSSProperties;
-    rowItem: React.CSSProperties;
-  };
-}
+interface Props { styles: any; COFFEE: any; }
 
-export default function ManageNoti({ styles }: Props) {
+export default function ManageNoti({ styles, COFFEE }: Props) {
   const [notis, setNotis] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ id: '', title: '', content: '' });
+  const [form, setForm] = useState({ id: '', title: '', content: '', type: 'info' });
 
-  // 1. Lấy danh sách thông báo đã đăng
   const fetchNotis = async () => {
-    const { data } = await supabase
-      .from('notifications')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const { data } = await supabase.from('notifications').select('*').order('created_at', { ascending: false });
     setNotis(data || []);
   };
 
-  useEffect(() => {
-    fetchNotis();
-  }, []);
+  useEffect(() => { fetchNotis(); }, []);
 
-  // 2. Gửi thông báo (Thêm hoặc Sửa)
-  const handleSend = async () => {
-    if (!form.title || !form.content) return alert("Vui lòng nhập đủ tiêu đề và nội dung!");
-    
+  const handleSave = async () => {
+    if (!form.title || !form.content) return alert("Vui lòng nhập đủ nội dung!");
     setLoading(true);
-    const { id, ...data } = form;
-
-    if (id) {
-      // SỬA THÔNG BÁO
-      await supabase.from('notifications').update(data).eq('id', id);
-      alert("Đã cập nhật thông báo!");
-    } else {
-      // THÊM MỚI
-      await supabase.from('notifications').insert([data]);
-      alert("Đã đăng thông báo mới!");
-    }
-
-    setForm({ id: '', title: '', content: '' });
-    fetchNotis();
+    try {
+      const { id, ...data } = form;
+      if (id) {
+        await supabase.from('notifications').update(data).eq('id', id);
+      } else {
+        await supabase.from('notifications').insert([data]);
+      }
+      setForm({ id: '', title: '', content: '', type: 'info' });
+      fetchNotis();
+      alert("Đã lưu thông báo!");
+    } catch (err: any) { alert(err.message); }
     setLoading(false);
   };
 
   return (
     <div style={styles.cardStyle}>
-      <h3 style={{ marginBottom: '15px' }}>🔔 THÔNG BÁO HỆ THỐNG</h3>
+      <h3 style={{ color: COFFEE.deep, marginBottom: '20px' }}>🔔 QUẢN LÝ THÔNG BÁO</h3>
       
-      <div style={{ marginBottom: '20px' }}>
-        <input 
-          style={styles.inputStyle} 
-          placeholder="Tiêu đề thông báo (VD: Lịch nghỉ Tết, Truyện mới...)" 
-          value={form.title}
-          onChange={e => setForm({ ...form, title: e.target.value })}
-        />
-        <textarea 
-          style={{ ...styles.inputStyle, height: '120px' }} 
-          placeholder="Nội dung thông báo chi tiết..." 
-          value={form.content}
-          onChange={e => setForm({ ...form, content: e.target.value })}
-        />
-        <button onClick={handleSend} style={styles.btnPrimary} disabled={loading}>
-          {loading ? 'ĐANG GỬI...' : (form.id ? 'CẬP NHẬT THÔNG BÁO' : 'ĐĂNG THÔNG BÁO NGAY')}
-        </button>
-        {form.id && (
-          <button 
-            onClick={() => setForm({ id: '', title: '', content: '' })} 
-            style={{ ...styles.btnMini, width: '100%', marginTop: '10px', background: '#999', padding: '10px' }}
-          >
-            HỦY SỬA
-          </button>
-        )}
-      </div>
+      <input style={styles.inputStyle} placeholder="Tiêu đề thông báo..." value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+      
+      <select style={styles.inputStyle} value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+        <option value="info">☕ Thông tin (Màu nâu)</option>
+        <option value="alert">⚠️ Cảnh báo (Màu đỏ)</option>
+        <option value="event">🎉 Sự kiện (Màu xanh)</option>
+      </select>
 
-      <hr style={{ border: '0.5px solid #eee', margin: '20px 0' }} />
+      <textarea style={{ ...styles.inputStyle, height: '120px' }} placeholder="Nội dung chi tiết..." value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} />
+      
+      <button onClick={handleSave} style={styles.btnPrimary} disabled={loading}>
+        {loading ? 'ĐANG LƯU...' : 'ĐĂNG THÔNG BÁO'}
+      </button>
 
-      {/* DANH SÁCH CÁC THÔNG BÁO CŨ */}
-      <h4>Thông báo đã đăng:</h4>
-      <div style={{ marginTop: '10px' }}>
-        {notis.length === 0 && <p style={{ color: '#888', fontSize: '0.9rem' }}>Chưa có thông báo nào.</p>}
+      <div style={{ marginTop: '30px' }}>
+        <h4>THÔNG BÁO ĐÃ ĐĂNG</h4>
         {notis.map(n => (
-          <div key={n.id} style={{ ...styles.rowItem, flexDirection: 'column', alignItems: 'flex-start', gap: '5px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-              <b style={{ color: '#333' }}>{n.title}</b>
-              <div style={{ display: 'flex', gap: '5px' }}>
-                <button onClick={() => setForm(n)} style={styles.btnMini}>Sửa</button>
-                <button 
-                  onClick={async () => {
-                    if (confirm("Xóa thông báo này?")) {
-                      await supabase.from('notifications').delete().eq('id', n.id);
-                      fetchNotis();
-                    }
-                  }} 
-                  style={{ ...styles.btnMini, background: '#ff4444' }}
-                >
-                  Xóa
-                </button>
-              </div>
+          <div key={n.id} style={{ ...styles.rowItem, borderLeft: `5px solid ${n.type === 'alert' ? '#ff4444' : COFFEE.medium}` }}>
+            <div>
+              <b>{n.title}</b>
+              <div style={{ fontSize: '0.8rem', color: '#666' }}>{new Date(n.created_at).toLocaleDateString()}</div>
             </div>
-            <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
-              {n.content.substring(0, 100)}{n.content.length > 100 ? '...' : ''}
-            </p>
-            <small style={{ color: '#aaa', fontSize: '0.7rem' }}>
-              Ngày đăng: {new Date(n.created_at).toLocaleString('vi-VN')}
-            </small>
+            <div style={{ display: 'flex', gap: '5px' }}>
+              <button onClick={() => setForm(n)} style={styles.btnMini}>Sửa</button>
+              <button onClick={async () => { if(confirm('Xóa?')) { await supabase.from('notifications').delete().eq('id', n.id); fetchNotis(); } }} style={{ ...styles.btnMini, background: '#ff4444' }}>Xóa</button>
+            </div>
           </div>
         ))}
       </div>

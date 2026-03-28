@@ -1,180 +1,88 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabaseClient'; // Dùng @ hoặc ../../../ tùy cấu hình của bạn
+import { supabase } from '@/lib/supabaseClient'; 
 
-interface Props {
-  styles: {
-    cardStyle: React.CSSProperties;
-    inputStyle: React.CSSProperties;
-    btnPrimary: React.CSSProperties;
-    btnMini: React.CSSProperties;
-    rowItem: React.CSSProperties;
-  };
-}
+interface Props { styles: any; COFFEE: any; }
 
-export default function ManageChapters({ styles }: Props) {
+export default function ManageChapters({ styles, COFFEE }: Props) {
   const [books, setBooks] = useState<any[]>([]);
-  const [chapters, setChapters] = useState<any[]>([]);
-  const [searchTerm, setSearchTerm] = useState(''); // Bộ lọc tên truyện
   const [selectedBook, setSelectedBook] = useState('');
+  const [chapters, setChapters] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ 
-    id: '', 
-    title: '', 
-    content: '', 
-    chapter: '', 
-    password: '' 
+
+  const [form, setForm] = useState({
+    id: '', title: '', chapter: '', content: '', password: ''
   });
 
-  // 1. Lấy danh sách truyện để bỏ vào ô chọn (Select)
-  useEffect(() => {
-    supabase.from('books').select('id, title').then(({ data }) => setBooks(data || []));
-  }, []);
+  useEffect(() => { fetchBooks(); }, []);
+  useEffect(() => { if (selectedBook) fetchChapters(); }, [selectedBook]);
 
-  // 2. Lấy danh sách chương khi chọn một truyện cụ thể
-  const fetchChapters = async (bookId: string) => {
-    const { data } = await supabase
-      .from('chapters')
+  const fetchBooks = async () => {
+    const { data } = await supabase.from('books').select('id, title');
+    setBooks(data || []);
+  };
+
+  const fetchChapters = async () => {
+    const { data } = await supabase.from('chapters')
       .select('*')
-      .eq('book_id', bookId)
-      .order('chapter', { ascending: false }); // Chương mới nhất hiện lên đầu
+      .eq('book_id', selectedBook)
+      .order('chapter', { ascending: false }); // Sắp xếp theo cột chapter
     setChapters(data || []);
   };
 
-  useEffect(() => {
-    if (selectedBook) {
-      fetchChapters(selectedBook);
-    } else {
-      setChapters([]);
-    }
-  }, [selectedBook]);
-
-  // 3. Hàm lưu chương (Thêm/Sửa)
-  const saveChapter = async () => {
-    if (!selectedBook) return alert("Vui lòng chọn truyện trước!");
-    if (!form.chapter || !form.content) return alert("Thiếu số chương hoặc nội dung!");
-
+  const handleSave = async () => {
+    if (!selectedBook || !form.title || !form.content) return alert("Vui lòng điền đủ Tiêu đề và Nội dung!");
     setLoading(true);
-    const { id, ...rest } = form;
+    try {
+      const { id, ...data } = form;
+      const payload = { ...data, book_id: selectedBook };
 
-    if (id) {
-      // CẬP NHẬT
-      await supabase.from('chapters').update(rest).eq('id', id);
-      alert("Đã cập nhật chương!");
-    } else {
-      // THÊM MỚI
-      await supabase.from('chapters').insert([{ ...rest, book_id: selectedBook }]);
-      alert("Đã thêm chương mới!");
-    }
-
-    setForm({ id: '', title: '', content: '', chapter: '', password: '' });
-    fetchChapters(selectedBook);
+      if (id) {
+        await supabase.from('chapters').update(payload).eq('id', id);
+        alert("Đã cập nhật chương!");
+      } else {
+        await supabase.from('chapters').insert([payload]);
+        alert("Đã thêm chương mới!");
+      }
+      setForm({ id: '', title: '', chapter: '', content: '', password: '' });
+      fetchChapters();
+    } catch (err: any) { alert(err.message); }
     setLoading(false);
   };
 
-  // 4. Lọc danh sách truyện theo ô tìm kiếm
-  const filteredBooks = books.filter(b => 
-    b.title.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   return (
     <div style={styles.cardStyle}>
-      <h3 style={{ marginBottom: '15px' }}>📑 QUẢN LÝ CHƯƠNG</h3>
+      <h3 style={{ color: COFFEE.deep, marginBottom: '20px' }}>📑 QUẢN LÝ CHƯƠNG</h3>
+      
+      <select style={styles.inputStyle} value={selectedBook} onChange={e => setSelectedBook(e.target.value)}>
+        <option value="">-- CHỌN TRUYỆN ĐỂ QUẢN LÝ --</option>
+        {books.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
+      </select>
 
-      {/* BỘ LỌC TRUYỆN */}
-      <div style={{ marginBottom: '20px', padding: '15px', background: '#f9f9f9', borderRadius: '15px' }}>
-        <p style={{ fontSize: '0.8rem', color: '#666', marginBottom: '5px' }}>Bước 1: Tìm & Chọn truyện</p>
-        <input 
-          style={styles.inputStyle} 
-          placeholder="🔍 Nhập tên truyện để tìm nhanh..." 
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-        />
-        <select 
-          style={styles.inputStyle} 
-          value={selectedBook} 
-          onChange={e => setSelectedBook(e.target.value)}
-        >
-          <option value="">-- CHỌN TRUYỆN TRONG DANH SÁCH --</option>
-          {filteredBooks.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
-        </select>
-      </div>
-
-      {/* FORM NHẬP CHƯƠNG (Chỉ hiện khi đã chọn truyện) */}
       {selectedBook && (
-        <div style={{ marginTop: '15px', borderTop: '2px solid #eee', paddingTop: '20px' }}>
-          <h4>{form.id ? '✏️ Đang sửa chương' : '➕ Thêm chương mới'}</h4>
-          
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <input 
-              placeholder="Số chương (VD: 1)" 
-              value={form.chapter} 
-              style={{ ...styles.inputStyle, width: '30%' }} 
-              onChange={e => setForm({ ...form, chapter: e.target.value })} 
-            />
-            <input 
-              placeholder="Tên chương (Không bắt buộc)" 
-              value={form.title} 
-              style={{ ...styles.inputStyle, width: '70%' }} 
-              onChange={e => setForm({ ...form, title: e.target.value })} 
-            />
+        <div style={{ marginTop: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '10px' }}>
+            <input style={styles.inputStyle} placeholder="Số (Ví dụ: 1)" value={form.chapter} onChange={e => setForm({ ...form, chapter: e.target.value })} />
+            <input style={styles.inputStyle} placeholder="Tiêu đề chương..." value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
           </div>
-
-          <input 
-            placeholder="🔑 Mật khẩu chương (Để trống nếu muốn đọc tự do)" 
-            value={form.password || ''} 
-            style={styles.inputStyle} 
-            onChange={e => setForm({ ...form, password: e.target.value })} 
-          />
-
-          <textarea 
-            placeholder="Nội dung chương..." 
-            value={form.content} 
-            style={{ ...styles.inputStyle, height: '250px', fontFamily: 'serif' }} 
-            onChange={e => setForm({ ...form, content: e.target.value })} 
-          />
-
-          <button onClick={saveChapter} style={styles.btnPrimary} disabled={loading}>
-            {loading ? 'ĐANG LƯU...' : 'LƯU CHƯƠNG'}
+          <input style={styles.inputStyle} placeholder="🔑 Mật khẩu chương (nếu có)" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
+          <textarea style={{ ...styles.inputStyle, height: '300px', fontFamily: 'serif' }} placeholder="Nội dung chương..." value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} />
+          
+          <button onClick={handleSave} style={styles.btnPrimary} disabled={loading}>
+            {loading ? 'ĐANG LƯU...' : (form.id ? 'CẬP NHẬT CHƯƠNG' : 'LƯU CHƯƠNG MỚI')}
           </button>
 
-          {form.id && (
-            <button 
-              onClick={() => setForm({ id: '', title: '', content: '', chapter: '', password: '' })} 
-              style={{ ...styles.btnMini, width: '100%', marginTop: '10px', background: '#999', padding: '10px' }}
-            >
-              HỦY SỬA
-            </button>
-          )}
-
-          {/* DANH SÁCH CHƯƠNG ĐÃ ĐĂNG */}
           <div style={{ marginTop: '30px' }}>
-            <h4 style={{ marginBottom: '10px' }}>Các chương đã có:</h4>
-            <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid #eee', borderRadius: '10px' }}>
-              {chapters.length === 0 && <p style={{ padding: '20px', textAlign: 'center' }}>Truyện này chưa có chương nào.</p>}
-              {chapters.map(c => (
-                <div key={c.id} style={styles.rowItem}>
-                  <span>
-                    <b>C.{c.chapter}</b>: {c.title || 'Không tiêu đề'} 
-                    {c.password && <span style={{ marginLeft: '10px' }}>🔑</span>}
-                  </span>
-                  <div>
-                    <button onClick={() => setForm(c)} style={styles.btnMini}>Sửa</button>
-                    <button 
-                      onClick={async () => { 
-                        if (confirm(`Xóa chương ${c.chapter}?`)) { 
-                          await supabase.from('chapters').delete().eq('id', c.id); 
-                          fetchChapters(selectedBook); 
-                        } 
-                      }} 
-                      style={{ ...styles.btnMini, background: '#ff4444' }}
-                    >
-                      Xóa
-                    </button>
-                  </div>
+            <h4>MỤC LỤC ({chapters.length} chương)</h4>
+            {chapters.map(c => (
+              <div key={c.id} style={styles.rowItem}>
+                <span><b>Chương {c.chapter}:</b> {c.title} {c.password && '🔑'}</span>
+                <div style={{ display: 'flex', gap: '5px' }}>
+                  <button onClick={() => { setForm(c); window.scrollTo(0,0); }} style={styles.btnMini}>Sửa</button>
+                  <button onClick={async () => { if(confirm('Xóa?')) { await supabase.from('chapters').delete().eq('id', c.id); fetchChapters(); } }} style={{ ...styles.btnMini, background: '#ff4444' }}>Xóa</button>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

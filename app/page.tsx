@@ -1,8 +1,8 @@
 'use client';
-import React, { useEffect, useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '../lib/supabaseClient';
+import React, { useState, useEffect, useMemo } from 'react'; // Đã thêm useMemo
+import { supabase } from '@/lib/supabaseClient';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // Đã thêm useRouter đúng chuẩn Next.js
 
 const COFFEE = {
   deep: '#3E2723',
@@ -16,10 +16,14 @@ const COFFEE = {
 export default function HomePage() {
   const [books, setBooks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('Tất cả'); // State cho bộ lọc
+  const [filter, setFilter] = useState('Tất cả');
   const router = useRouter();
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+    });
     async function getBooks() {
       const { data } = await (supabase.from('books').select('*') as any);
       setBooks(data || []);
@@ -27,6 +31,8 @@ export default function HomePage() {
     }
     getBooks();
   }, []);
+
+  const isAdmin = user?.email === 'yuyuriri443@gmail.com';
 
   // --- LOGIC BỘ LỌC ---
   const filteredBooks = useMemo(() => {
@@ -39,7 +45,6 @@ export default function HomePage() {
 
   return (
     <div style={pageWrapper}>
-      {/* 1. LỚP NỀN GẤU MỜ RIÊNG BIỆT (KHÔNG LÀM MỜ CHỮ) */}
       <div style={bgOverlayStyle}></div>
 
       <style dangerouslySetInnerHTML={{ __html: `
@@ -55,7 +60,7 @@ export default function HomePage() {
         .filter-item:hover { background: #F0EBE3; color: ${COFFEE.deep}; }
       `}} />
 
-      {/* 2. BỘ LỌC CÓ LOGIC CHẠY */}
+      {/* BỘ LỌC STICKY */}
       <div style={filterContainer}>
         <div style={filterWrap}>
           {['Tất cả', 'Thịnh hành', 'Đề cử', 'Đam mỹ', 'Ngôn tình', 'Hoàn thành'].map((cat) => (
@@ -63,7 +68,7 @@ export default function HomePage() {
               key={cat}
               onClick={() => setFilter(cat)}
               className="filter-item"
-              style={filter === cat ? filterActive : filterNormal}
+              style={filter === cat ? (filterActive as any) : (filterNormal as any)}
             >
               {cat}
             </span>
@@ -74,7 +79,6 @@ export default function HomePage() {
       <div style={container}>
         {/* CỘT TRÁI */}
         <div style={leftColumn}>
-          {/* Hiển thị tiêu đề theo bộ lọc */}
           <BookBlock 
             title={filter === 'Tất cả' ? "✨ TẤT CẢ TRUYỆN" : `📖 THỂ LOẠI: ${filter.toUpperCase()}`} 
             items={filteredBooks} 
@@ -83,7 +87,7 @@ export default function HomePage() {
           {filter === 'Tất cả' && (
             <>
               <BookBlock title="ĐAM MỸ" items={books.filter(b => b.category === 'Đam mỹ').slice(0, 5)} />
-              <BookBlock title="HOÀN THÀNH" items={books.slice(-5).reverse()} />
+              <BookBlock title="HOÀN THÀNH" items={books.filter(b => b.status === 'Hoàn thành').slice(0, 5)} />
             </>
           )}
         </div>
@@ -93,7 +97,7 @@ export default function HomePage() {
           <div style={rankWrapper}>
             <div style={rankHeader}>BẢNG XẾP HẠNG</div>
             <div style={{ padding: '10px 15px' }}>
-              {books.sort((a,b) => b.rating - a.rating).slice(0, 8).map((b, i) => (
+              {[...books].sort((a,b) => (b.views || 0) - (a.views || 0)).slice(0, 8).map((b, i) => (
                 <Link href={`/book/${b.id}`} key={b.id} style={rankItem}>
                   <div style={rankNum(i)}>{i + 1}</div>
                   <div style={{ flex: 1, marginLeft: '12px', overflow: 'hidden' }}>
@@ -107,6 +111,15 @@ export default function HomePage() {
         </aside>
       </div>
 
+      {/* NÚT ADMIN FIX LỖI */}
+      {isAdmin && (
+        <Link href="/admin">
+          <div style={adminFixedBtn}>
+            ⚙️ Quản trị
+          </div>
+        </Link>
+      )}
+
       <footer style={footerStyle}>
         <div style={{ fontWeight: '700', fontSize: '1.2rem' }}>MOKAMOCHA</div>
         <p style={{ fontSize: '0.8rem', opacity: 0.7 }}>© 2026 Reading with Coffee</p>
@@ -115,8 +128,9 @@ export default function HomePage() {
   );
 }
 
+// COMPONENT CON: BOOKBLOCK
 function BookBlock({ title, items }: { title: string, items: any[] }) {
-  const router = useRouter(); // Thêm dòng này để kích hoạt điều hướng
+  const router = useRouter();
 
   return (
     <section style={blockArea}>
@@ -126,7 +140,6 @@ function BookBlock({ title, items }: { title: string, items: any[] }) {
       </div>
       <div style={bookGrid}>
         {items.length > 0 ? items.map(book => (
-          /* THÊM onClick vào đây: Bấm vào cả cái card là đi luôn */
           <div 
             key={book.id} 
             className="book-card" 
@@ -139,7 +152,7 @@ function BookBlock({ title, items }: { title: string, items: any[] }) {
             <div style={{ padding: '12px' }}>
               <div style={bookName}>{book.title}</div>
               <div style={bookAuthor}>{book.author}</div>
-              <button className="read-btn" style={readBtn}>ĐỌC TRUYỆN</button>
+              <button style={readBtn}>ĐỌC TRUYỆN</button>
             </div>
           </div>
         )) : <div style={{padding: '20px', color: '#999'}}>Không tìm thấy truyện nào...</div>}
@@ -148,107 +161,55 @@ function BookBlock({ title, items }: { title: string, items: any[] }) {
   );
 }
 
-// --- STYLES ---
-
-const pageWrapper: React.CSSProperties = { 
-  minHeight: '100vh', 
-  backgroundColor: '#FDF5E6',
-  position: 'relative',
-};
-
-// ĐÂY LÀ LỚP NỀN GẤU MỜ (Opacity 0.3)
+// --- TẤT CẢ STYLES (GIỮ NGUYÊN) ---
+const pageWrapper: React.CSSProperties = { minHeight: '100vh', backgroundColor: '#FDF5E6', position: 'relative' };
 const bgOverlayStyle: React.CSSProperties = {
   position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
   backgroundImage: `url('/bg-coffee.png')`,
   backgroundSize: '350px', backgroundRepeat: 'repeat',
   opacity: 0.3, zIndex: 0, pointerEvents: 'none'
 };
-
-const filterContainer = { 
-  background: '#fff', 
-  padding: '15px', // Sửa từ 8% thành 15px
-  position: 'sticky' as any, 
-  top: 0, 
-  zIndex: 100, 
-  borderBottom: `1px solid ${COFFEE.border}`,
-  boxSizing: 'border-box'
+const filterContainer: React.CSSProperties = { 
+  background: '#fff', padding: '15px', position: 'sticky', top: 0, zIndex: 100, 
+  borderBottom: `1px solid ${COFFEE.border}`, boxSizing: 'border-box'
 };
 const filterWrap = { display: 'flex', gap: '15px', maxWidth: '1300px', margin: '0 auto', flexWrap: 'wrap' as any };
 const filterNormal = { fontSize: '0.85rem', fontWeight: '600', color: COFFEE.light };
 const filterActive = { fontSize: '0.85rem', fontWeight: '700', color: COFFEE.deep, background: '#F0EBE3' };
-
 const container: React.CSSProperties = { 
-  display: 'flex', 
-  flexDirection: 'row',
-  flexWrap: 'wrap', // THÊM CÁI NÀY: Để Sidebar tự nhảy xuống dưới khi hết chỗ
-  padding: '20px 15px', // Sửa từ 8% thành 15px
-  gap: '20px', 
-  maxWidth: '1400px', 
-  margin: '0 auto', 
-  position: 'relative', 
-  zIndex: 1,
-  boxSizing: 'border-box'
+  display: 'flex', flexDirection: 'row', flexWrap: 'wrap', padding: '20px 15px', 
+  gap: '20px', maxWidth: '1400px', margin: '0 auto', position: 'relative', zIndex: 1, boxSizing: 'border-box'
 };
-const sidebarStyle: React.CSSProperties = { 
-  flex: '1', 
-  minWidth: '280px', // Đủ rộng để hiện BXH
-  width: '100%',
-  marginTop: '20px' 
-};
+const leftColumn: React.CSSProperties = { flex: '3', minWidth: '320px', width: '100%', boxSizing: 'border-box' };
+const sidebarStyle: React.CSSProperties = { flex: '1', minWidth: '280px', width: '100%', marginTop: '20px' };
 const blockArea: React.CSSProperties = { 
-  background: '#FFF', 
-  padding: '15px', // Giảm từ 25px xuống 15px
-  borderRadius: '20px', 
-  marginBottom: '25px', 
-  border: `1px solid ${COFFEE.border}`, 
-  boxShadow: '0 5px 15px rgba(0,0,0,0.02)',
-  boxSizing: 'border-box'
-};
-// Dòng 135 nè bạn:
-const leftColumn: React.CSSProperties = { 
-  flex: '3', 
-  minWidth: '320px', // Đảm bảo không bị quá hẹp trên điện thoại
-  width: '100%',
-  boxSizing: 'border-box'
+  background: '#FFF', padding: '15px', borderRadius: '20px', marginBottom: '25px', 
+  border: `1px solid ${COFFEE.border}`, boxShadow: '0 5px 15px rgba(0,0,0,0.02)', boxSizing: 'border-box'
 };
 const blockHead = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' };
 const blockTitle = { fontSize: '1rem', fontWeight: '700', color: COFFEE.deep, margin: 0 };
 const viewMore = { fontSize: '0.75rem', fontWeight: '600', color: COFFEE.medium, textDecoration: 'none' };
-
-const bookGrid = {
-  display: 'grid',
-  // Tự động tính toán số cột dựa trên chiều rộng màn hình
-  gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', 
-  gap: '15px',
-  width: '100%',
+const bookGrid: React.CSSProperties = {
+  display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '15px', width: '100%'
 };
 const cardStyle: React.CSSProperties = { background: '#fff', borderRadius: '20px', overflow: 'hidden', border: `1px solid #F0F0F0`, textAlign: 'center' };
 const coverWrap = { width: '100%', height: '200px', overflow: 'hidden' };
 const coverImg = { width: '100%', height: '100%', objectFit: 'cover' as any };
-
-// CHỮ KHÔNG CÒN ĐẬM NHẠT (Fix weight)
 const bookName = { fontWeight: '600', fontSize: '0.8rem', color: COFFEE.deep, marginBottom: '3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } as any;
 const bookAuthor = { fontSize: '0.7rem', color: COFFEE.light, marginBottom: '10px', fontWeight: '400' };
-const readBtn = { width: '100%', padding: '8px 0', borderRadius: '12px', fontWeight: '600', fontSize: '0.7rem', cursor: 'pointer', border: `1.5px solid ${COFFEE.medium}` };
-
+const readBtn: React.CSSProperties = { width: '100%', padding: '8px 0', borderRadius: '12px', fontWeight: '600', fontSize: '0.7rem', cursor: 'pointer', border: `1.5px solid ${COFFEE.medium}`, background: 'transparent' };
 const rankWrapper = { background: '#fff', borderRadius: '25px', border: `1px solid ${COFFEE.border}`, overflow: 'hidden', position: 'sticky' as any, top: '90px' };
 const rankHeader = { background: COFFEE.deep, color: '#fff', padding: '15px', textAlign: 'center' as any, fontWeight: '700', fontSize: '0.85rem' };
-const rankItem = { display: 'flex', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #F5F5F5', textDecoration: 'none', color: COFFEE.deep };
-// Chèn cái này vào chỗ các biến const style ở cuối file nhé
+const rankItem = { display: 'flex', alignItems: 'center', padding: '12px 15px', borderBottom: '1px solid #F5F5F5', textDecoration: 'none', color: COFFEE.deep };
 const rankNum = (i: number): React.CSSProperties => ({ 
-  minWidth: '24px', 
-  height: '24px', 
-  borderRadius: '50%', 
-  background: i < 3 ? COFFEE.medium : '#F0EBE3', 
-  color: i < 3 ? '#fff' : '#888', 
-  display: 'flex', 
-  alignItems: 'center', 
-  justifyContent: 'center', 
-  fontSize: '0.7rem', 
-  fontWeight: '700' 
+  minWidth: '24px', height: '24px', borderRadius: '50%', background: i < 3 ? COFFEE.medium : '#F0EBE3', color: i < 3 ? '#fff' : '#888', 
+  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: '700' 
 });
 const rankTitle = { fontSize: '0.8rem', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } as any;
 const rankMeta = { fontSize: '0.65rem', color: COFFEE.light };
-
 const footerStyle: React.CSSProperties = { textAlign: 'center', padding: '50px', background: COFFEE.deep, color: '#fff', marginTop: '40px', position: 'relative', zIndex: 1 };
 const loadingStyle: React.CSSProperties = { height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '600', color: COFFEE.deep };
+const adminFixedBtn: React.CSSProperties = {
+  position: 'fixed', bottom: '30px', right: '30px', background: '#3E2723', color: '#fff', padding: '12px 20px', borderRadius: '50px',
+  fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 5px 15px rgba(0,0,0,0.2)', zIndex: 9999, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px', border: '2px solid #FDF5E6'
+};
