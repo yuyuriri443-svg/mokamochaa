@@ -28,7 +28,7 @@ export default function AdminDashboard() {
         <button onClick={() => window.location.href='/'} style={{...tabBtn(false), marginTop: 'auto', opacity: 0.7}}>← Về Trang chủ</button>
       </div>
 
-      <div style={mainContent}>
+      <div style={mainContent as any}>
         {tab === 'books' && <ManageBooks />}
         {tab === 'chapters' && <ManageChapters />}
         {tab === 'noti' && <ManageNoti />}
@@ -60,6 +60,7 @@ function ManageBooks() {
     const { error } = await supabase.storage.from('assets').upload(fileName, file);
     if (!error) {
       const { data } = supabase.storage.from('assets').getPublicUrl(fileName) as any;
+      // Trả lại tính năng cũ: Covers thì vào cover_url, Ebooks thì vào download_url
       folder === 'covers' ? setForm({...form, cover_url: data.publicUrl}) : setForm({...form, download_url: data.publicUrl});
     } else {
       alert("Lỗi upload: Hãy đảm bảo bạn đã tạo Bucket 'assets' và để Public!");
@@ -68,37 +69,48 @@ function ManageBooks() {
   };
 
   const saveBook = async () => {
-    if (form.id) {
-      const { error } = await supabase.from('books').update(form).eq('id', form.id);
-      if (!error) alert("Cập nhật truyện thành công!");
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    // Tách cái id ra để tránh gửi id: '' lên Supabase khi insert
+    const { id, ...dataWithoutId } = form;
+
+    // Ép kiểu 'as any' để TypeScript không bắt bẻ cái user_id nữa
+    const finalData: any = { 
+      ...dataWithoutId, 
+      user_id: user?.id 
+    };
+
+    if (id) {
+      // CẬP NHẬT
+      const { error } = await supabase
+        .from('books')
+        .update(finalData)
+        .eq('id', id);
+      if (!error) alert("Cập nhật thành công! ☕");
     } else {
-      const { error } = await supabase.from('books').insert([form]);
-      if (!error) alert("Thêm truyện thành công!");
+      // THÊM MỚI (Dùng [finalData] và ép kiểu cho Supabase)
+      const { error } = await supabase
+        .from('books')
+        .insert([finalData] as any); 
+      if (!error) alert("Đã đăng truyện mới! ✨");
+      else alert("Lỗi insert: " + error.message);
     }
+
     setForm({ id: '', title: '', author: '', cover_url: '', download_url: '', password: '', description: '' });
     fetchBooks();
   };
-
+  // FIX LỖI XÓA: Gọi đúng tên hàm bạn đặt ở nút bấm
   const handleDeleteBook = async (bookId: string) => {
-  const confirmDelete = confirm("Bạn có chắc muốn xóa cuốn truyện 'chill' này không? ☕");
-  if (!confirmDelete) return;
-
-  try {
-    const { error } = await supabase
-      .from('books')
-      .delete()
-      .eq('id', bookId);
-
-    if (error) throw error;
-
-    alert("Đã xóa truyện thành công! ✨");
-    // Reload lại trang hoặc cập nhật state để truyện biến mất
-    window.location.reload(); 
-    
-  } catch (error: any) {
-    alert("Lỗi xóa truyện: " + error.message);
-  }
-};
+    const confirmDelete = confirm("Bạn có chắc muốn xóa cuốn truyện 'chill' này không? ☕");
+    if (!confirmDelete) return;
+    const { error } = await supabase.from('books').delete().eq('id', bookId);
+    if (!error) {
+      alert("Đã xóa thành công!");
+      fetchBooks();
+    } else {
+      alert("Lỗi: " + error.message);
+    }
+  };
 
   return (
     <div>
@@ -106,9 +118,15 @@ function ManageBooks() {
         <h2 style={titleSection}>{form.id ? '✏️ CHỈNH SỬA TRUYỆN' : '📖 ĐĂNG TRUYỆN MỚI'}</h2>
         <div style={formGrid}>
           <div style={{display:'flex', gap:'10px'}}>
+             {/* Ô Upload BÌA */}
              <div style={upBox}>
                 {form.cover_url ? <img src={form.cover_url} style={imgPrev}/> : 'Bìa'}
                 <input type="file" style={fileHidden} onChange={e => handleFileUpload(e, 'covers')} />
+             </div>
+             {/* Ô Upload FILE TRUYỆN (PDF/EPUB) */}
+             <div style={{...upBox, background: form.download_url ? '#e8f5e9' : 'transparent'}}>
+                {form.download_url ? '✅ Đã có File' : 'File truyện'}
+                <input type="file" style={fileHidden} onChange={e => handleFileUpload(e, 'ebooks')} />
              </div>
              <div style={{flex:1, display:'flex', flexDirection:'column', gap:'10px'}}>
                 <input placeholder="Tên truyện" value={form.title} style={inputStyle} onChange={e => setForm({...form, title: e.target.value})} />
@@ -129,73 +147,11 @@ function ManageBooks() {
             <img src={b.cover_url} style={{width:'40px', height:'55px', borderRadius:'5px', objectFit:'cover'}} />
             <div style={{flex:1, marginLeft:'15px'}}><b>{b.title}</b> <br/> <small>{b.author}</small></div>
             <button onClick={() => setForm(b)} style={btnMini}>Sửa</button>
-            <button onClick={() => deleteBook(b.id)} style={{...btnMini, background:'#ff4444'}}>Xóa</button>
+            {/* NÚT XÓA CHUẨN ĐÂY RỒI */}
+            <button onClick={() => handleDeleteBook(b.id)} style={{...btnMini, background:'#ff4444'}}>Xóa</button>
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-// --- 2. QUẢN LÝ CHƯƠNG (XÓA/SỬA) ---
-function ManageChapters() {
-  const [books, setBooks] = useState<any[]>([]);
-  const [chapters, setChapters] = useState<any[]>([]);
-  const [selectedBook, setSelectedBook] = useState('');
-  const [form, setForm] = useState({ id: '', book_id: '', title: '', content: '', chapter_number: 1, password: '' });
-
-  useEffect(() => {
-    supabase.from('books').select('id, title').then(({data}) => setBooks(data || []));
-  }, []);
-
-  useEffect(() => {
-    if (selectedBook) {
-      supabase.from('chapters').select('*').eq('book_id', selectedBook).order('chapter_number', {ascending: false})
-      .then(({data}) => setChapters(data || []));
-    }
-  }, [selectedBook]);
-
-  const saveChapter = async () => {
-    if (form.id) {
-      await supabase.from('chapters').update(form).eq('id', form.id);
-      alert("Đã sửa chương!");
-    } else {
-      await supabase.from('chapters').insert([form]);
-      alert("Đã thêm chương!");
-    }
-    setForm({ id: '', book_id: selectedBook, title: '', content: '', chapter_number: 1, password: '' });
-    // Refresh list
-    const { data } = await supabase.from('chapters').select('*').eq('book_id', selectedBook).order('chapter_number', {ascending: false});
-    setChapters(data || []);
-  };
-
-  return (
-    <div style={cardStyle}>
-      <h2 style={titleSection}>📑 QUẢN LÝ CHƯƠNG</h2>
-      <select style={inputStyle} value={selectedBook} onChange={e => {setSelectedBook(e.target.value); setForm({...form, book_id: e.target.value})}}>
-        <option value="">--- Chọn bộ truyện để quản lý ---</option>
-        {books.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
-      </select>
-
-      {selectedBook && (
-        <>
-          <div style={{...formGrid, borderBottom: '1px solid #eee', paddingBottom: '20px', marginBottom: '20px'}}>
-            <input placeholder="Số chương" type="number" value={form.chapter_number} style={inputStyle} onChange={e => setForm({...form, chapter_number: parseInt(e.target.value)})} />
-            <input placeholder="Tên chương" value={form.title} style={inputStyle} onChange={e => setForm({...form, title: e.target.value})} />
-            <textarea placeholder="Nội dung..." value={form.content} style={{...inputStyle, height:'200px'}} onChange={e => setForm({...form, content: e.target.value})} />
-            <button onClick={saveChapter} style={btnPrimary}>{form.id ? 'CẬP NHẬT CHƯƠNG' : 'ĐĂNG CHƯƠNG'}</button>
-          </div>
-          
-          <h3>Danh sách chương:</h3>
-          {chapters.map(c => (
-            <div key={c.id} style={rowItem}>
-              <div style={{flex:1}}>Chương {c.chapter_number}: {c.title}</div>
-              <button onClick={() => setForm(c)} style={btnMini}>Sửa</button>
-              <button onClick={async () => { if(confirm("Xóa chap?")) { await supabase.from('chapters').delete().eq('id', c.id); setSelectedBook(selectedBook); } }} style={{...btnMini, background:'#ff4444'}}>Xóa</button>
-            </div>
-          ))}
-        </>
-      )}
     </div>
   );
 }
