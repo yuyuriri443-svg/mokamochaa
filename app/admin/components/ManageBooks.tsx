@@ -9,11 +9,16 @@ export default function ManageBooks({ styles, COFFEE }: Props) {
   const [books, setBooks] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(''); 
   
+  const [progress, setProgress] = useState({ current: 0, total: 0, status: '' });
+
   const [form, setForm] = useState({
     id: '', title: '', author: '', cover_url: '', 
     file_url: '', 
-    password: '', description: '', category: '', is_public: true 
+    password: '', 
+    password_hint: '', 
+    description: '', category: '', is_public: true 
   });
 
   const fetchBooks = async () => {
@@ -23,29 +28,56 @@ export default function ManageBooks({ styles, COFFEE }: Props) {
 
   useEffect(() => { fetchBooks(); }, []);
 
-  // --- 1. XỬ LÝ FILE EPUB (Đã fix logic bóc tách) ---
+  const uploadToGithub = async (bookSlug: string, fileName: string, content: string) => {
+    const token = process.env.NEXT_PUBLIC_GITHUB_TOKEN;
+    const REPO = 'yuyuriri443-svg/book-storage'; 
+    const path = `truyen/${bookSlug}/${fileName}.txt`;
+    const url = `https://api.github.com/repos/${REPO}/contents/${path}`;
+
+    try {
+      const bytes = new TextEncoder().encode(content);
+      const binString = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+      const b64Content = btoa(binString);
+
+      const res = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `token ${GITHUB_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Upload chương: ${fileName}`,
+          content: b64Content
+        })
+      });
+      
+      if (res.ok) return `https://raw.githubusercontent.com/${REPO}/main/${path}`;
+      return null;
+    } catch (e) {
+      console.error("Lỗi GitHub:", e);
+      return null;
+    }
+  };
+
   const handleEpubFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Hàm làm sạch tên file để tránh lỗi "Invalid Key"
     const sanitize = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '_').replace(/[^a-zA-Z0-9._-]/g, '');
 
     setLoading(true);
     try {
-      // A. Upload file gốc (Đã fix tên file)
+      setProgress({ current: 0, total: 0, status: ' đang giải nén file EPUB...' });
+      
       const cleanFileName = `files/${Date.now()}_${sanitize(file.name)}`;
-      const { error: upError } = await supabase.storage.from('moka-storage').upload(cleanFileName, file);
-      if (upError) throw upError;
+      await supabase.storage.from('moka-storage').upload(cleanFileName, file);
       const { data: urlData } = supabase.storage.from('moka-storage').getPublicUrl(cleanFileName);
       
-      // B. Giải nén
       const zip = await JSZip.loadAsync(file);
-      
-      // C. Lấy Metadata (Giữ nguyên logic của cậu)
       let epubTitle = file.name.replace('.epub', '');
       let epubAuthor = '';
       let epubDesc = '';
+      
       const opfPath = Object.keys(zip.files).find(fn => fn.endsWith('.opf'));
       if (opfPath) {
         const opfText = await zip.files[opfPath].async("text");
@@ -55,19 +87,17 @@ export default function ManageBooks({ styles, COFFEE }: Props) {
         epubDesc = xmlDoc.getElementsByTagName("dc:description")[0]?.textContent || '';
       }
 
-      // D. Đọc nội dung & Xử lý ảnh (Hỗ trợ cả Base64)
       const contentFiles = Object.keys(zip.files)
         .filter(fn => fn.endsWith('.xhtml') || fn.endsWith('.html'))
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
       let chapterList: any[] = [];
-      let fullRawText = "";
+      const bookSlug = sanitize(epubTitle).toLowerCase();
 
       for (const fn of contentFiles) {
         const html = await zip.files[fn].async("text");
         const doc = new DOMParser().parseFromString(html, 'text/html');
-
-        // Xử lý ảnh nhúng
+        
         const imgs = doc.querySelectorAll('img');
         for (const img of Array.from(imgs)) {
           const src = img.getAttribute('src') || "";
@@ -81,39 +111,25 @@ export default function ManageBooks({ styles, COFFEE }: Props) {
             }
           }
         }
-        fullRawText += (doc.body.innerText || "") + "\n";
-        
-        // --- CHIẾN THUẬT MỚI: Nếu không dùng Regex tách được, ta lấy mỗi file HTML làm 1 chương ---
-        // Chúng ta tạm lưu lại nội dung HTML đã xử lý ảnh
-       const contentHTML = doc.body.innerHTML;
-        const titleFromHTML = doc.querySelector('h1, h2, h3')?.innerText || `Chương ${chapterList.length + 1}`;
-        
-        chapterList.push({ title: titleFromHTML, content: contentHTML });
+        chapterList.push({ 
+          title: doc.querySelector('h1, h2, h3, b')?.innerText || `Chương ${chapterList.length + 1}`, 
+          content: doc.body.innerHTML,
+          sort_order: chapterList.length + 1
+        });
       }
 
-      // E. KIỂM TRA TÁCH CHƯƠNG BẰNG REGEX (Nếu văn bản gộp chung)
-      // Chấp nhận cả "Chuong", "Chương", "Chapter", "Hồi"...
-      const splitRegex = /(^|\n)(Chương\s+\d+|Chuong\s+\d+|Chapter\s+\d+|Hồi\s+\d+|Hoi\s+\d+|Quyển\s+\d+|Tiết\s+tử)/gi;
-      const parts = fullRawText.split(splitRegex);
+      const finalChapters = [];
+      setProgress({ current: 0, total: chapterList.length, status: 'Đang đẩy lên GitHub...' });
 
-      // Nếu Regex tìm thấy nhiều hơn 2 đoạn (tức là có dấu hiệu chia chương trong text)
-      if (parts.length > 3) {
-        const regexChapters: any[] = [];
-        let order = 1;
-        for (let i = 1; i < parts.length; i += 3) {
-          const t = parts[i+1]?.trim();
-          const c = parts[i+2]?.trim();
-          if (t && c) {
-            regexChapters.push({ title: t, content: c.replace(/\n/g, '<br/>'), sort_order: order++ });
-          }
+      for (let i = 0; i < chapterList.length; i++) {
+        const chap = chapterList[i];
+        setProgress(prev => ({ ...prev, current: i + 1, status: `Đang tải: ${chap.title}` }));
+        const githubUrl = await uploadToGithub(bookSlug, `chuong-${chap.sort_order}`, chap.content);
+        if (githubUrl) {
+          finalChapters.push({ title: chap.title, content: githubUrl, chapter: chap.sort_order });
         }
-        chapterList = regexChapters;
-      } else {
-        // Nếu không tách được bằng Regex, dùng danh sách file HTML đã lấy ở trên
-        chapterList = chapterList.map((c, idx) => ({ ...c, sort_order: idx + 1 }));
       }
 
-      // F. Cập nhật Form
       setForm(prev => ({ 
         ...prev, 
         file_url: urlData.publicUrl, 
@@ -122,8 +138,9 @@ export default function ManageBooks({ styles, COFFEE }: Props) {
         description: epubDesc 
       }));
 
-      (window as any).tempChapters = chapterList;
-      alert(`✅ Thành công! Đã nhận diện ${chapterList.length} chương.`);
+      (window as any).tempChapters = finalChapters;
+      setProgress({ current: 0, total: 0, status: 'Hoàn tất!' });
+      alert(`✅ Thành công! Đã đẩy ${finalChapters.length}/${chapterList.length} chương lên GitHub.`);
 
     } catch (err: any) {
       alert("Lỗi: " + err.message);
@@ -132,45 +149,56 @@ export default function ManageBooks({ styles, COFFEE }: Props) {
     }
   };
 
-  // --- 2. LƯU TỔNG HỢP ---
   const handleSave = async () => {
     if (!form.title) return alert("Vui lòng nhập tên truyện!");
     setLoading(true);
     try {
       const { id, ...dataToSave } = form;
+      
+      // Payload chuẩn để lưu vào Supabase
+      const payload = {
+        title: dataToSave.title,
+        author: dataToSave.author,
+        cover_url: dataToSave.cover_url,
+        file_url: dataToSave.file_url,
+        password: dataToSave.password || null,
+        password_hint: dataToSave.password_hint || null,
+        description: dataToSave.description,
+        category: dataToSave.category,
+        is_public: dataToSave.is_public
+      };
+
       let bookId = id;
 
       if (id) {
-        await supabase.from('books').update(dataToSave).eq('id', id);
+        const { error } = await supabase.from('books').update(payload).eq('id', id);
+        if (error) throw error;
       } else {
-        const { data, error } = await supabase.from('books').insert([dataToSave]).select().single();
+        const { data, error } = await supabase.from('books').insert([payload]).select().single();
         if (error) throw error;
         bookId = data.id;
       }
 
       const tempChapters = (window as any).tempChapters;
       if (tempChapters && tempChapters.length > 0) {
-        // 💡 Gán book_id cho từng chương trước khi insert
         const finalChapters = tempChapters.map((c: any) => ({ ...c, book_id: bookId }));
-        
-        // Xóa chương cũ nếu là chế độ chỉnh sửa để tránh trùng lặp (tùy chọn)
-        if (id) {
-            await supabase.from('chapters').delete().eq('book_id', id);
-        }
-
+        // Nếu là update truyện cũ, xóa chương cũ trước khi nạp chương mới từ epub
+        if (id) await supabase.from('chapters').delete().eq('book_id', id);
         const { error: cError } = await supabase.from('chapters').insert(finalChapters);
         if (cError) throw cError;
         (window as any).tempChapters = null;
       }
 
-      alert("🚀 Lưu truyện thành công!");
-      setForm({ id: '', title: '', author: '', cover_url: '', file_url: '', password: '', description: '', category: '', is_public: true });
+      alert("🚀 Đã lưu truyện và cập nhật Database!");
+      setForm({ id: '', title: '', author: '', cover_url: '', file_url: '', password: '', password_hint: '', description: '', category: '', is_public: true });
       fetchBooks();
-    } catch (error: any) { alert(error.message); }
+    } catch (error: any) { 
+        console.error(error);
+        alert("Lỗi lưu dữ liệu: " + error.message); 
+    }
     setLoading(false);
   };
 
-  // --- 3. UPLOAD ẢNH BÌA (Giữ nguyên) ---
   const handleUploadCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -184,25 +212,45 @@ export default function ManageBooks({ styles, COFFEE }: Props) {
     setUploading(false);
   };
 
+  const filteredBooks = books.filter(b => 
+    b.title.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div>
       <div style={styles.cardStyle}>
         <h3 style={{ color: COFFEE.deep, marginBottom: '25px', borderLeft: `5px solid ${COFFEE.medium}`, paddingLeft: '15px' }}>
-          {form.id ? '✨ CHỈNH SỬA TÁC PHẨM' : '✍️ ĐĂNG TRUYỆN MỚI'}
+          {form.id ? '✨ CHỈNH SỬA TÁC PHẨM' : '✍️ ĐĂNG TRUYỆM MỚI'}
         </h3>
+
+        {loading && progress.total > 0 && (
+          <div style={{ marginBottom: '20px', background: '#f5f5f5', borderRadius: '10px', padding: '15px', border: `1px solid ${COFFEE.medium}` }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: COFFEE.deep, marginBottom: '5px' }}>
+              {progress.status} ({progress.current}/{progress.total})
+            </div>
+            <div style={{ width: '100%', height: '10px', background: '#ddd', borderRadius: '5px', overflow: 'hidden' }}>
+              <div style={{ 
+                width: `${(progress.current / progress.total) * 100}%`, 
+                height: '100%', 
+                background: COFFEE.medium, 
+                transition: 'width 0.3s' 
+              }} />
+            </div>
+          </div>
+        )}
 
         <div style={uploadBoxStyle(COFFEE)}>
           <div style={{ flex: 1 }}>
             <span style={{ fontSize: '0.9rem', fontWeight: 'bold', display: 'block' }}>🚀 TRÌNH NHẬP TRUYỆN EPUB</span>
-            <span style={{ fontSize: '0.75rem', color: '#6d4c41' }}>Tự động bóc tách chương & tạo link tải cho độc giả</span>
+            <span style={{ fontSize: '0.75rem', color: '#6d4c41' }}>Tự động giải nén và đẩy chương lên GitHub storage</span>
           </div>
-          <input type="file" accept=".epub" onChange={handleEpubFile} disabled={loading} style={{ fontSize: '0.8rem' }} />
+          <input type="file" accept=".epub" onChange={handleEpubFile} disabled={loading} />
         </div>
 
         <div style={{ display: 'flex', gap: '25px', flexWrap: 'wrap', marginTop: '20px' }}>
           <div style={coverPreviewStyle}>
             {form.cover_url ? (
-              <img src={form.cover_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img src={form.cover_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Cover" />
             ) : (
               <div style={{ color: '#998f8a', fontSize: '0.7rem' }}>CHƯA CÓ BÌA</div>
             )}
@@ -215,116 +263,77 @@ export default function ManageBooks({ styles, COFFEE }: Props) {
                 🖼️ CHỌN ẢNH BÌA
                 <input type="file" hidden accept="image/*" onChange={handleUploadCover} />
               </label>
-              {form.file_url && <span style={tagStyle}>✔️ Đã có file EPUB</span>}
+              {form.file_url && <span style={tagStyle}>✔️ Đã nhận file EPUB</span>}
             </div>
 
             <input style={styles.inputStyle} placeholder="Tiêu đề truyện..." value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
             <input style={styles.inputStyle} placeholder="Tên tác giả..." value={form.author} onChange={e => setForm({ ...form, author: e.target.value })} />
+            <input style={styles.inputStyle} placeholder="Thể loại / Tags" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} />
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <input style={styles.inputStyle} placeholder="Thể loại (Tag)" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} />
-              <input style={styles.inputStyle} placeholder="🔑 Mật khẩu truyện" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <span style={{ fontSize: '0.7rem', color: COFFEE.deep, fontWeight: 'bold' }}>🔑 Mật khẩu (nếu có):</span>
+                <input style={{...styles.inputStyle, background: '#fff9c4'}} placeholder="Nhập pass..." value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <span style={{ fontSize: '0.7rem', color: COFFEE.deep, fontWeight: 'bold' }}>💡 Gợi ý:</span>
+                <input style={styles.inputStyle} placeholder="Gợi ý mật khẩu..." value={form.password_hint} onChange={e => setForm({ ...form, password_hint: e.target.value })} />
+              </div>
             </div>
           </div>
         </div>
 
-        <textarea style={{ ...styles.inputStyle, height: '100px', marginTop: '10px' }} placeholder="Tóm tắt nội dung..." value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} />
+        <textarea style={{ ...styles.inputStyle, height: '100px', marginTop: '10px' }} placeholder="Tóm tắt nội dung truyện..." value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} />
         
-        <button onClick={handleSave} style={{...styles.btnPrimary, background: COFFEE.deep, fontSize: '1rem'}} disabled={loading || uploading}>
-          {loading ? '⌛ ĐANG XỬ LÝ...' : (form.id ? '💾 CẬP NHẬT THAY ĐỔI' : '☕ XUẤT BẢN NGAY')}
+        <button onClick={handleSave} style={{...styles.btnPrimary, background: COFFEE.deep, fontSize: '1rem', marginTop: '20px'}} disabled={loading || uploading}>
+          {loading ? '⌛ ĐANG XỬ LÝ...' : (form.id ? '💾 CẬP NHẬT TRUYỆN' : '☕ XUẤT BẢN TRUYỆN')}
         </button>
 
         {form.id && (
-          <button onClick={() => setForm({ id:'', title:'', author:'', cover_url:'', file_url:'', password:'', description:'', category:'', is_public:true })} style={{ ...styles.btnMini, marginTop: '10px', width: '100%', background: '#bcaaa4' }}>HỦY CHẾ ĐỘ SỬA</button>
+          <button onClick={() => setForm({ id:'', title:'', author:'', cover_url:'', file_url:'', password:'', password_hint: '', description:'', category:'', is_public:true })} style={{ ...styles.btnMini, marginTop: '10px', width: '100%', background: '#bcaaa4', height: '35px' }}>HỦY CHẾ ĐỘ CHỈNH SỬA</button>
         )}
       </div>
 
       <div style={{ marginTop: '40px' }}>
-        <h4 style={{ color: COFFEE.deep, marginBottom: '20px', fontSize: '1.1rem' }}>📚 TRUYỆN ĐÃ ĐĂNG</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '15px' }}>
-          {books.map(b => (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h4 style={{ color: COFFEE.deep, fontSize: '1.1rem', margin: 0 }}>📚 DANH SÁCH TRUYỆN</h4>
+          <input 
+            style={{ ...styles.inputStyle, width: '250px', marginBottom: 0, border: `1px solid ${COFFEE.medium}` }} 
+            placeholder="🔍 Tìm nhanh tên truyện..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '15px' }}>
+          {filteredBooks.length > 0 ? filteredBooks.map(b => (
             <div key={b.id} style={bookRowStyle}>
-              <img src={b.cover_url} style={{ width: '50px', height: '70px', borderRadius: '8px', objectFit: 'cover' }} />
+              <img src={b.cover_url} style={{ width: '55px', height: '80px', borderRadius: '8px', objectFit: 'cover' }} alt="Cover" />
               <div style={{ flex: 1 }}>
-                <b style={{ fontSize: '0.9rem', color: COFFEE.deep }}>{b.title}</b>
-                <div style={{ fontSize: '0.7rem', color: '#8d6e63' }}>{b.author} | {b.category || 'No Tag'}</div>
-                {b.file_url && <div style={{ fontSize: '0.65rem', color: '#2e7d32' }}>📎 Có file đính kèm</div>}
+                <b style={{ fontSize: '0.95rem', color: COFFEE.deep, display: 'block' }}>{b.title}</b>
+                <div style={{ fontSize: '0.75rem', color: '#8d6e63', marginBottom: '4px' }}>{b.author}</div>
+                {b.password ? (
+                  <div style={{ fontSize: '0.7rem', color: '#d84315', fontWeight: 'bold' }}>🔐 Pass: {b.password}</div>
+                ) : (
+                  <div style={{ fontSize: '0.7rem', color: '#757575' }}>🔓 Không mật khẩu</div>
+                )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 <button onClick={() => { setForm(b); window.scrollTo({top:0, behavior:'smooth'}); }} style={styles.btnMini}>Sửa</button>
-                <button onClick={async () => { if(confirm('Xóa truyện này?')) { await supabase.from('books').delete().eq('id', b.id); fetchBooks(); } }} style={{ ...styles.btnMini, background: '#e57373' }}>Xóa</button>
+                <button onClick={async () => { if(confirm('Bạn có chắc muốn xóa truyện này và toàn bộ chương của nó?')) { await supabase.from('books').delete().eq('id', b.id); fetchBooks(); } }} style={{ ...styles.btnMini, background: '#e57373' }}>Xóa</button>
               </div>
             </div>
-          ))}
+          )) : <div style={{ color: '#998f8a', fontStyle: 'italic', textAlign: 'center', width: '100%' }}>Không có truyện nào trùng khớp...</div>}
         </div>
       </div>
     </div>
   );
 }
 
-// Giữ nguyên các Styles phía dưới
-const uploadBoxStyle = (COFFEE: any) => ({
-  background: '#efebe9',
-  padding: '20px',
-  borderRadius: '18px',
-  border: `2px dashed ${COFFEE.medium}`,
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginBottom: '20px'
-});
-
-const vibeBtn = (COFFEE: any): React.CSSProperties => ({
-  background: COFFEE.medium,
-  color: '#fff',
-  padding: '10px 18px',
-  borderRadius: '12px',
-  fontSize: '0.8rem',
-  fontWeight: 'bold',
-  cursor: 'pointer',
-  display: 'inline-block'
-});
-
-const coverPreviewStyle: React.CSSProperties = {
-  width: '160px', 
-  height: '230px', 
-  borderRadius: '15px', 
-  border: '3px solid #efebe9', 
-  overflow: 'hidden', 
-  background: '#fff',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  boxShadow: '0 5px 15px rgba(0,0,0,0.08)',
-  position: 'relative'
-};
-
-const overlayStyle: React.CSSProperties = {
-  position: 'absolute',
-  inset: 0,
-  background: 'rgba(255,255,255,0.8)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: '0.8rem'
-};
-
-const tagStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  background: '#e8f5e9',
-  color: '#2e7d32',
-  borderRadius: '10px',
-  fontSize: '0.75rem',
-  fontWeight: 'bold'
-};
-
-const bookRowStyle: React.CSSProperties = {
-  display: 'flex', 
-  gap: '15px', 
-  background: '#fff', 
-  padding: '15px', 
-  borderRadius: '18px', 
-  alignItems: 'center',
-  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-  border: '1px solid #f5f5f5'
-};
+// STYLES 
+const uploadBoxStyle = (COFFEE: any) => ({ background: '#f5f5f5', padding: '20px', borderRadius: '18px', border: `2px dashed ${COFFEE.medium}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' });
+const vibeBtn = (COFFEE: any): React.CSSProperties => ({ background: COFFEE.medium, color: '#fff', padding: '10px 18px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', display: 'inline-block' });
+const coverPreviewStyle: React.CSSProperties = { width: '160px', height: '230px', borderRadius: '15px', border: '3px solid #efebe9', overflow: 'hidden', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 5px 15px rgba(0,0,0,0.08)', position: 'relative' };
+const overlayStyle: React.CSSProperties = { position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' };
+const tagStyle: React.CSSProperties = { padding: '8px 12px', background: '#e8f5e9', color: '#2e7d32', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 'bold' };
+const bookRowStyle: React.CSSProperties = { display: 'flex', gap: '15px', background: '#fff', padding: '15px', borderRadius: '18px', alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #f0f0f0' };
